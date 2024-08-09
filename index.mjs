@@ -2,7 +2,14 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import minimist from "minimist";
-import { PDFDocument, StandardFonts, PageSizes, rgb, degrees } from "pdf-lib";
+import {
+  PDFDocument,
+  StandardFonts,
+  PageSizes,
+  rgb,
+  degrees,
+  grayscale,
+} from "pdf-lib";
 import chalk from "chalk";
 
 const log = console.log;
@@ -15,41 +22,41 @@ const outPutDir = args["out-dir"] ?? "output";
 const nameDelineator = args["name-deli"] ?? " - ";
 const label = args.label ?? "SEPARATOR PAGE";
 
-const pdfScript = async () => {
-  // page sizes
-  const letter = PageSizes.Letter;
-  const letterWidth = letter[0];
-  const letterHeight = letter[1];
-  const legal = PageSizes.Legal;
-  const legalWidth = legal[0];
-  const legalHeight = legal[1];
-  const tabloid = PageSizes.Tabloid;
-  const tabloidWidth = tabloid[0];
-  const tabloidHeight = tabloid[1];
+// page sizes
+const letter = PageSizes.Letter;
+const letterWidth = letter[0];
+const letterHeight = letter[1];
 
-  if (!dir) {
-    log(
-      chalk.redBright(
-        "The source directory is required. Usage: node ./index.mjs --dir=<source directory>"
-      )
-    );
-    process.exit(1);
-  }
+const fontSize = 14;
+const headerFontSize = 16;
+const labelFontSize = 50;
 
-  if (!fs.existsSync(dir)) {
-    log(chalk.redBright(`Directory ${dir} does not exist\nExiting...`));
-    process.exit(1);
-  }
+if (!dir) {
+  log(
+    chalk.redBright(
+      "The source directory is required. Usage: node ./index.mjs --dir=<source directory>"
+    )
+  );
+  process.exit(1);
+}
 
-  if (!fs.existsSync(outPutDir)) {
-    log(chalk.cyanBright(`Creating output directory ${outPutDir}\n`));
-    fs.mkdirSync(outPutDir);
-  }
+if (!fs.existsSync(dir)) {
+  log(chalk.redBright(`Directory ${dir} does not exist\nExiting...`));
+  process.exit(1);
+}
 
+if (!fs.existsSync(outPutDir)) {
+  log(chalk.cyanBright(`Creating output directory ${outPutDir}\n`));
+  fs.mkdirSync(outPutDir);
+}
+
+let totalPages = 0;
+
+const generatePdfWithSeparator = async () => {
   const files = fs.readdirSync(dir);
   for (const file of files) {
     log(chalk.cyan("Processing", chalk.white(`${file}`)));
-
+    // get file path
     const filePath = path.join(dir, file);
     // check if file is a pdf
     if (!fs.statSync(filePath).isFile() || path.extname(filePath) !== ".pdf") {
@@ -58,7 +65,6 @@ const pdfScript = async () => {
     }
     // parse pdf file names to get pieces
     let namePieces = file.split(nameDelineator);
-
     // remove '.pdf' from last name piece
     namePieces[namePieces.length - 1] = namePieces[namePieces.length - 1].slice(
       0,
@@ -68,11 +74,9 @@ const pdfScript = async () => {
     // create separator page
     const sepPdfDoc = await PDFDocument.create();
     const font = await sepPdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontSize = 14;
-    const headerFontSize = 16;
-    const labelFontSize = 50;
     const page = sepPdfDoc.addPage(PageSizes.Letter);
     const { width, height } = page.getSize();
+    totalPages += 1;
 
     // load bookmark image
     const bookmarkUrl = path.join(__dirname, "/images/tab.png");
@@ -80,7 +84,6 @@ const pdfScript = async () => {
       fs.readFileSync(bookmarkUrl)
     );
     const bookmarkDims = bookmarkImage.scale(0.25);
-
     // draw bookmark
     page.drawImage(bookmarkImage, {
       x: width - bookmarkDims.height,
@@ -99,6 +102,7 @@ const pdfScript = async () => {
     log(chalk.cyan("Getting number of original pdf pages"));
     const orgPdfPages = orgPdfDoc.getPageIndices();
     const orgPdfPagesLength = orgPdfPages.length;
+    totalPages += orgPdfPagesLength;
 
     // construct text blocks
     const header = [namePieces[0], namePieces[1]];
@@ -120,6 +124,7 @@ const pdfScript = async () => {
     const textWidth = (text, textFontSize) =>
       font.widthOfTextAtSize(text, textFontSize);
     const textHeight = (textFontSize) => font.heightAtSize(textFontSize);
+
     // draw text line
     const drawText = (text, textFontSize, offset = 0) =>
       page.drawText(text, {
@@ -151,8 +156,7 @@ const pdfScript = async () => {
       width -
         bookmarkDims.height * 1.5 -
         textHeight(headerFontSize) * 1.5 * 2 -
-        textHeight(fontSize) * 1.5 * 2 -
-        textHeight(fontSize) * 1.5
+        textHeight(fontSize) * 1.5 * 3
     );
     drawText(label, labelFontSize, width / 2);
 
@@ -163,8 +167,8 @@ const pdfScript = async () => {
       // check orgPage size
       const orgHeight = orgPage.getHeight();
       const orgWidth = orgPage.getWidth();
-      const heightScale = letterHeight / orgHeight;
-      const widthScale = letterWidth / orgWidth;
+      const heightScale = (letterHeight / orgHeight) * 0.8;
+      const widthScale = (letterWidth / orgWidth) * 0.8;
 
       // resize if not letter
       if (orgHeight !== letterHeight) {
@@ -176,6 +180,10 @@ const pdfScript = async () => {
 
       // scale original content
       orgPage.scaleContent(widthScale, heightScale);
+
+      // move content
+      orgPage.resetPosition();
+      orgPage.translateContent(72, 108);
 
       // rotate page
       orgPage.setRotation(degrees(0));
@@ -201,5 +209,40 @@ const pdfScript = async () => {
   }
 };
 
-await pdfScript();
+const applyPageNumbersToGeneratedPdfs = async () => {
+  log(chalk.cyan("Applying page numbers to generated pdfs"));
+  const files = fs.readdirSync(outPutDir);
+  let currentPage = 1;
+  for (const file of files) {
+    const pdf = await PDFDocument.load(
+      fs.readFileSync(path.join(outPutDir, file))
+    );
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const pages = pdf.getPages();
+    pages.forEach((page) => {
+      const footer = `Page ${currentPage} of ${totalPages}`;
+      page.drawRectangle({
+        x: page.getWidth() / 2 - (font.widthOfTextAtSize(footer, 8) * 1.2) / 2,
+        y: 72,
+        width: font.widthOfTextAtSize(footer, 8) * 1.2,
+        height: font.heightAtSize(8) * 1.5,
+        color: grayscale(1),
+      });
+      page.drawText(footer, {
+        x: page.getWidth() / 2 - font.widthOfTextAtSize(footer, 8) / 2,
+        y: 72 + font.heightAtSize(8) / 2,
+        size: 8,
+        font,
+        color: rgb(0, 0, 0),
+      });
+      currentPage += 1;
+    });
+
+    const pageBytes = await pdf.save();
+    fs.writeFileSync(path.join(outPutDir, path.basename(file)), pageBytes);
+  }
+};
+
+await generatePdfWithSeparator();
+await applyPageNumbersToGeneratedPdfs();
 log(chalk.greenBright.bold("DONE!"));
