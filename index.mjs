@@ -21,6 +21,10 @@ const dir = args.dir ?? "";
 const outPutDir = args["out-dir"] ?? "output";
 const nameDelineator = args["name-deli"] ?? " - ";
 const label = args.label ?? "SEPARATOR PAGE";
+const numberPages = args["number-pages"] === "true" ? true : false;
+const mergeAll = args["merge-all"] === "true" ? true : false;
+const mergedName = args["merged-name"] ?? "merged.pdf";
+const groupDesc = args["group-desc"] ?? null;
 
 // page sizes
 const letter = PageSizes.Letter;
@@ -209,18 +213,19 @@ const generatePdfWithSeparator = async () => {
   }
 };
 
-const applyPageNumbersToGeneratedPdfs = async () => {
-  log(chalk.cyan("Applying page numbers to generated pdfs"));
+const applyFooterToGeneratedPdfs = async () => {
+  log(chalk.cyan("Applying footer to generated pdfs."));
   const files = fs.readdirSync(outPutDir);
   let currentPage = 1;
   for (const file of files) {
-    const pdf = await PDFDocument.load(
-      fs.readFileSync(path.join(outPutDir, file))
-    );
+    const pdfBytes = fs.readFileSync(path.join(outPutDir, file));
+    const pdf = await PDFDocument.load(pdfBytes);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
     pages.forEach((page) => {
-      const footer = `Page ${currentPage} of ${totalPages}`;
+      const footer = `${groupDesc} - Page ${currentPage} of ${totalPages}`;
+      if (!groupDesc) footer = footer.split(" - ")[1];
+      if (!numberPages) footer = footer.split(" - ")[0];
       page.drawRectangle({
         x: page.getWidth() / 2 - (font.widthOfTextAtSize(footer, 8) * 1.2) / 2,
         y: 72,
@@ -235,14 +240,40 @@ const applyPageNumbersToGeneratedPdfs = async () => {
         font,
         color: rgb(0, 0, 0),
       });
-      currentPage += 1;
+      if (numberPages) currentPage += 1;
     });
 
     const pageBytes = await pdf.save();
     fs.writeFileSync(path.join(outPutDir, path.basename(file)), pageBytes);
   }
+  log(chalk.green("Success, applied footer to all pages.\n\n"));
+};
+
+const mergeAllGeneratedPdfs = async () => {
+  log(chalk.cyan("Merging all generated pdfs."));
+  const files = fs.readdirSync(outPutDir);
+  const pdfDoc = await PDFDocument.create();
+  for (const file of files) {
+    const pdfReadBytes = fs.readFileSync(path.join(outPutDir, file));
+    const pdfRead = await PDFDocument.load(pdfReadBytes);
+    const pdfReadIndices = pdfRead.getPageIndices();
+    const pdfCopy = await pdfDoc.copyPages(pdfRead, pdfReadIndices);
+    pdfCopy.forEach((page) => {
+      pdfDoc.addPage(page);
+    });
+  }
+  const pdfWriteBytes = await pdfDoc.save();
+  fs.writeFileSync(path.join(outPutDir, mergedName), pdfWriteBytes);
+  log(
+    chalk.green(
+      "Success, all pdfs merged and",
+      chalk.white.bold(`${path.join(outPutDir, mergedName)}`),
+      "has been crated.\n\n"
+    )
+  );
 };
 
 await generatePdfWithSeparator();
-await applyPageNumbersToGeneratedPdfs();
+if (numberPages || groupDesc) await applyFooterToGeneratedPdfs();
+if (mergeAll) await mergeAllGeneratedPdfs();
 log(chalk.greenBright.bold("DONE!"));
