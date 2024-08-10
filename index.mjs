@@ -1,6 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs";
+import fs, { unlinkSync } from "fs";
 import minimist from "minimist";
 import {
   PDFDocument,
@@ -44,29 +44,55 @@ if (!dir) {
   process.exit(1);
 }
 
-if (!fs.existsSync(dir)) {
-  log(chalk.redBright(`Directory ${dir} does not exist\nExiting...`));
+try {
+  fs.accessSync(dir);
+} catch (error) {
+  log(chalk.redBright(`Can not access ${dir}, or you not have permission to read and write to it\nExiting...`));
   process.exit(1);
 }
 
-if (!fs.existsSync(outPutDir)) {
+try {
+  fs.accessSync(outPutDir);
+} catch (error) {
   log(chalk.cyanBright(`Creating output directory ${outPutDir}\n`));
   fs.mkdirSync(outPutDir);
 }
 
+// delete existing merged pdf if any
+try {
+  fs.accessSync(path.join(outPutDir, mergedName));
+  log(chalk.yellow("Deleting existing merged PDF..."));
+  fs.unlinkSync(path.join(outPutDir, mergedName));
+} catch (error) {}
+
 let totalPages = 0;
 
 const generatePdfWithSeparator = async () => {
+  log(chalk.cyan(`Reading source directory ${dir}`));
   const files = fs.readdirSync(dir);
-  for (const file of files) {
+  // remove non pdfs and sort filename index 0
+  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
+    return sorterA - sorterB;
+  });
+  log(chalk.cyan(`Found ${filteredFiles.length} PDF files`));
+  for (const file of filteredFiles) {
     log(chalk.cyan("Processing", chalk.white(`${file}`)));
     // get file path
     const filePath = path.join(dir, file);
     // check if file is a pdf
     if (!fs.statSync(filePath).isFile() || path.extname(filePath) !== ".pdf") {
-      log(chalk.red(`Skipping ${file}, this is not a pdf file`));
+      log(chalk.red(`Skipping ${file}, this is not a PDF file`));
       continue;
     }
+
+    // skip invalid formatted filenames
+    if (file.split(nameDelineator)[0].length !== 8 || isNaN(+file.split(nameDelineator)[0])) {
+      log(chalk.red(`Skipping ${file}, invalid filename`));
+      continue;
+    }
+
     // parse pdf file names to get pieces
     let namePieces = file.split(nameDelineator);
     // remove '.pdf' from last name piece
@@ -98,12 +124,12 @@ const generatePdfWithSeparator = async () => {
     });
 
     // load original pdf
-    log(chalk.cyan("Loading original pdf"));
+    log(chalk.cyan("Loading original PDF"));
     const orgPdfDoc = await PDFDocument.load(
       fs.readFileSync(path.join(dir, file))
     );
     // get original pdf page indices
-    log(chalk.cyan("Getting number of original pdf pages"));
+    log(chalk.cyan("Getting number of original PDF pages"));
     const orgPdfPages = orgPdfDoc.getPageIndices();
     const orgPdfPagesLength = orgPdfPages.length;
     totalPages += orgPdfPagesLength;
@@ -171,8 +197,8 @@ const generatePdfWithSeparator = async () => {
       // check orgPage size
       const orgHeight = orgPage.getHeight();
       const orgWidth = orgPage.getWidth();
-      const heightScale = (letterHeight / orgHeight) * 0.8;
-      const widthScale = (letterWidth / orgWidth) * 0.8;
+      const heightScale = (letterHeight / orgHeight) * 0.9;
+      const widthScale = (letterWidth / orgWidth) * 0.9;
 
       // resize if not letter
       if (orgHeight !== letterHeight) {
@@ -187,7 +213,7 @@ const generatePdfWithSeparator = async () => {
 
       // move content
       orgPage.resetPosition();
-      orgPage.translateContent(72, 108);
+      orgPage.translateContent(30.6, 60);
 
       // rotate page
       orgPage.setRotation(degrees(0));
@@ -197,7 +223,7 @@ const generatePdfWithSeparator = async () => {
     });
 
     // save pdf with separator and original pages
-    log(chalk.cyan("Saving new pdf to output directory"));
+    log(chalk.cyan("Saving new PDF to output directory"));
     const separatorPageBytes = await sepPdfDoc.save();
     fs.writeFileSync(
       path.join(outPutDir, path.basename(file)),
@@ -207,35 +233,40 @@ const generatePdfWithSeparator = async () => {
       chalk.green(
         "Success",
         chalk.white.bold(`${path.join(outPutDir, path.basename(file))}`),
-        "has been crated.\n\n"
+        "has been created.\n\n"
       )
     );
   }
 };
 
 const applyFooterToGeneratedPdfs = async () => {
-  log(chalk.cyan("Applying footer to generated pdfs."));
+  log(chalk.cyan("Applying footer to generated PDFs."));
   const files = fs.readdirSync(outPutDir);
+  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
+    return sorterA - sorterB;
+  });
   let currentPage = 1;
-  for (const file of files) {
+  for (const file of filteredFiles) {
     const pdfBytes = fs.readFileSync(path.join(outPutDir, file));
     const pdf = await PDFDocument.load(pdfBytes);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
     pages.forEach((page) => {
-      const footer = `${groupDesc} - Page ${currentPage} of ${totalPages}`;
+      let footer = `${groupDesc ?? "_"} - Page ${currentPage} of ${totalPages}`;
       if (!groupDesc) footer = footer.split(" - ")[1];
       if (!numberPages) footer = footer.split(" - ")[0];
       page.drawRectangle({
-        x: page.getWidth() / 2 - (font.widthOfTextAtSize(footer, 8) * 1.2) / 2,
-        y: 72,
+        x: page.getWidth() - 36 - (font.widthOfTextAtSize(footer, 8) * 1.2),
+        y: 36,
         width: font.widthOfTextAtSize(footer, 8) * 1.2,
         height: font.heightAtSize(8) * 1.5,
         color: grayscale(1),
       });
       page.drawText(footer, {
-        x: page.getWidth() / 2 - font.widthOfTextAtSize(footer, 8) / 2,
-        y: 72 + font.heightAtSize(8) / 2,
+        x: page.getWidth() - 36 - font.widthOfTextAtSize(footer, 8),
+        y: 36 + font.heightAtSize(8) / 2,
         size: 8,
         font,
         color: rgb(0, 0, 0),
@@ -250,10 +281,15 @@ const applyFooterToGeneratedPdfs = async () => {
 };
 
 const mergeAllGeneratedPdfs = async () => {
-  log(chalk.cyan("Merging all generated pdfs."));
+  log(chalk.cyan("Merging all generated PDFs."));
   const files = fs.readdirSync(outPutDir);
+  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
+    return sorterA - sorterB;
+  });
   const pdfDoc = await PDFDocument.create();
-  for (const file of files) {
+  for (const file of filteredFiles) {
     const pdfReadBytes = fs.readFileSync(path.join(outPutDir, file));
     const pdfRead = await PDFDocument.load(pdfReadBytes);
     const pdfReadIndices = pdfRead.getPageIndices();
@@ -266,9 +302,9 @@ const mergeAllGeneratedPdfs = async () => {
   fs.writeFileSync(path.join(outPutDir, mergedName), pdfWriteBytes);
   log(
     chalk.green(
-      "Success, all pdfs merged and",
+      "Success, all PDFs merged and",
       chalk.white.bold(`${path.join(outPutDir, mergedName)}`),
-      "has been crated.\n\n"
+      "has been created.\n\n"
     )
   );
 };

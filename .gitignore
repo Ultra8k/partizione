@@ -134,3 +134,4 @@ pdfs
 pdfOuts
 output
 **/*.pdf
+*.zip
