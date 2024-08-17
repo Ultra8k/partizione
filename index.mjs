@@ -1,7 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
-import fs, { unlinkSync } from "fs";
-import minimist from "minimist";
+import fs from "fs";
 import {
   PDFDocument,
   StandardFonts,
@@ -11,20 +10,22 @@ import {
   grayscale,
 } from "pdf-lib";
 import chalk from "chalk";
+import parseOptions from "./parse-options.mjs";
 
 const log = console.log;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// parse command line arguments
-const args = minimist(process.argv.slice(2));
-const dir = args.dir ?? "";
-const outPutDir = args["out-dir"] ?? "output";
-const nameDelineator = args["name-deli"] ?? " - ";
-const label = args.label ?? "SEPARATOR PAGE";
-const numberPages = args["number-pages"] === "true" ? true : false;
-const mergeAll = args["merge-all"] === "true" ? true : false;
-const mergedName = args["merged-name"] ?? "merged.pdf";
-const groupDesc = args["group-desc"] ?? null;
+const {
+  dir,
+  outDir,
+  nameDelineator,
+  label,
+  numberPages,
+  mergeAll,
+  mergedName,
+  groupDesc,
+  groupDescLabel
+} = await parseOptions();
 
 // page sizes
 const letter = PageSizes.Letter;
@@ -38,7 +39,7 @@ const labelFontSize = 50;
 if (!dir) {
   log(
     chalk.redBright(
-      "The source directory is required. Usage: node ./index.mjs --dir=<source directory>"
+      "The source directory is required. Usage: node ./index.mjs [--cli | --dir=<source directory>]"
     )
   );
   process.exit(1);
@@ -47,22 +48,22 @@ if (!dir) {
 try {
   fs.accessSync(dir);
 } catch (error) {
-  log(chalk.redBright(`Can not access ${dir}, or you not have permission to read and write to it\nExiting...`));
+  log(chalk.redBright(`Can not access ${dir}. The directory doesn't exist or you do not have permission to read and write to it.\nExiting...`));
   process.exit(1);
 }
 
 try {
-  fs.accessSync(outPutDir);
+  fs.accessSync(outDir);
 } catch (error) {
-  log(chalk.cyanBright(`Creating output directory ${outPutDir}\n`));
-  fs.mkdirSync(outPutDir);
+  log(chalk.cyanBright(`Creating output directory ${outDir}\n`));
+  fs.mkdirSync(outDir);
 }
 
 // delete existing merged pdf if any
 try {
-  fs.accessSync(path.join(outPutDir, mergedName));
+  fs.accessSync(path.join(outDir, mergedName));
   log(chalk.yellow("Deleting existing merged PDF..."));
-  fs.unlinkSync(path.join(outPutDir, mergedName));
+  fs.unlinkSync(path.join(outDir, mergedName));
 } catch (error) {}
 
 let totalPages = 0;
@@ -226,13 +227,13 @@ const generatePdfWithSeparator = async () => {
     log(chalk.cyan("Saving new PDF to output directory"));
     const separatorPageBytes = await sepPdfDoc.save();
     fs.writeFileSync(
-      path.join(outPutDir, path.basename(file)),
+      path.join(outDir, path.basename(file)),
       separatorPageBytes
     );
     log(
       chalk.green(
         "Success",
-        chalk.white.bold(`${path.join(outPutDir, path.basename(file))}`),
+        chalk.white.bold(`${path.join(outDir, path.basename(file))}`),
         "has been created.\n\n"
       )
     );
@@ -241,7 +242,7 @@ const generatePdfWithSeparator = async () => {
 
 const applyFooterToGeneratedPdfs = async () => {
   log(chalk.cyan("Applying footer to generated PDFs."));
-  const files = fs.readdirSync(outPutDir);
+  const files = fs.readdirSync(outDir);
   const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
     const sorterA = +a.split(nameDelineator)[0];
     const sorterB = +b.split(nameDelineator)[0];
@@ -249,13 +250,13 @@ const applyFooterToGeneratedPdfs = async () => {
   });
   let currentPage = 1;
   for (const file of filteredFiles) {
-    const pdfBytes = fs.readFileSync(path.join(outPutDir, file));
+    const pdfBytes = fs.readFileSync(path.join(outDir, file));
     const pdf = await PDFDocument.load(pdfBytes);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
     pages.forEach((page) => {
-      let footer = `${groupDesc ?? "_"} - Page ${currentPage} of ${totalPages}`;
-      if (!groupDesc) footer = footer.split(" - ")[1];
+      let footer = `${groupDescLabel ?? "_"} - Page ${currentPage} of ${totalPages}`;
+      if (!groupDescLabel) footer = footer.split(" - ")[1];
       if (!numberPages) footer = footer.split(" - ")[0];
       page.drawRectangle({
         x: page.getWidth() - 36 - (font.widthOfTextAtSize(footer, 8) * 1.2),
@@ -275,14 +276,14 @@ const applyFooterToGeneratedPdfs = async () => {
     });
 
     const pageBytes = await pdf.save();
-    fs.writeFileSync(path.join(outPutDir, path.basename(file)), pageBytes);
+    fs.writeFileSync(path.join(outDir, path.basename(file)), pageBytes);
   }
   log(chalk.green("Success, applied footer to all pages.\n\n"));
 };
 
 const mergeAllGeneratedPdfs = async () => {
   log(chalk.cyan("Merging all generated PDFs."));
-  const files = fs.readdirSync(outPutDir);
+  const files = fs.readdirSync(outDir);
   const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
     const sorterA = +a.split(nameDelineator)[0];
     const sorterB = +b.split(nameDelineator)[0];
@@ -290,7 +291,7 @@ const mergeAllGeneratedPdfs = async () => {
   });
   const pdfDoc = await PDFDocument.create();
   for (const file of filteredFiles) {
-    const pdfReadBytes = fs.readFileSync(path.join(outPutDir, file));
+    const pdfReadBytes = fs.readFileSync(path.join(outDir, file));
     const pdfRead = await PDFDocument.load(pdfReadBytes);
     const pdfReadIndices = pdfRead.getPageIndices();
     const pdfCopy = await pdfDoc.copyPages(pdfRead, pdfReadIndices);
@@ -299,11 +300,11 @@ const mergeAllGeneratedPdfs = async () => {
     });
   }
   const pdfWriteBytes = await pdfDoc.save();
-  fs.writeFileSync(path.join(outPutDir, mergedName), pdfWriteBytes);
+  fs.writeFileSync(path.join(outDir, mergedName), pdfWriteBytes);
   log(
     chalk.green(
       "Success, all PDFs merged and",
-      chalk.white.bold(`${path.join(outPutDir, mergedName)}`),
+      chalk.white.bold(`${path.join(outDir, mergedName)}`),
       "has been created.\n\n"
     )
   );
