@@ -17,6 +17,9 @@ importers:
       cli-spinners:
         specifier: ^3.1.0
         version: 3.1.0
+      log-symbols:
+        specifier: ^6.0.0
+        version: 6.0.0
       minimist:
         specifier: ^1.2.8
         version: 1.2.8

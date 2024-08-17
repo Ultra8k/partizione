@@ -10,10 +10,11 @@ import {
   grayscale,
 } from "pdf-lib";
 import chalk from "chalk";
-import parseOptions from "./parse-options.mjs";
+import parseOptions from "./modules/parse-options.mjs";
+import { oraPromise } from "ora";
+import logSymbols from "log-symbols";
 
 const log = console.log;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const {
   dir,
@@ -27,18 +28,10 @@ const {
   groupDescLabel
 } = await parseOptions();
 
-// page sizes
-const letter = PageSizes.Letter;
-const letterWidth = letter[0];
-const letterHeight = letter[1];
-
-const fontSize = 14;
-const headerFontSize = 16;
-const labelFontSize = 50;
-
 if (!dir) {
   log(
     chalk.redBright(
+      logSymbols.error,
       "The source directory is required. Usage: node ./index.mjs [--cli | --dir=<source directory>]"
     )
   );
@@ -48,24 +41,33 @@ if (!dir) {
 try {
   fs.accessSync(dir);
 } catch (error) {
-  log(chalk.redBright(`Can not access ${dir}. The directory doesn't exist or you do not have permission to read and write to it.\nExiting...`));
+  log(chalk.redBright(`${logSymbols.error} Can not access ${dir}. The directory doesn't exist or you do not have permission to read and write to it.\nExiting...\n`));
   process.exit(1);
 }
 
 try {
   fs.accessSync(outDir);
 } catch (error) {
-  log(chalk.cyanBright(`Creating output directory ${outDir}\n`));
+  log(chalk.cyanBright(`${logSymbols.info} Creating output directory ${outDir}\n`));
   fs.mkdirSync(outDir);
 }
 
 // delete existing merged pdf if any
 try {
   fs.accessSync(path.join(outDir, mergedName));
-  log(chalk.yellow("Deleting existing merged PDF..."));
+  log(chalk.yellow(logSymbols.warning, "Deleting existing merged PDF...\n"));
   fs.unlinkSync(path.join(outDir, mergedName));
 } catch (error) {}
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// page sizes
+const letter = PageSizes.Letter;
+const letterWidth = letter[0];
+const letterHeight = letter[1];
+
+const fontSize = 14;
+const headerFontSize = 16;
+const labelFontSize = 50;
 let totalPages = 0;
 
 const generatePdfWithSeparator = async () => {
@@ -84,13 +86,13 @@ const generatePdfWithSeparator = async () => {
     const filePath = path.join(dir, file);
     // check if file is a pdf
     if (!fs.statSync(filePath).isFile() || path.extname(filePath) !== ".pdf") {
-      log(chalk.red(`Skipping ${file}, this is not a PDF file`));
+      log(chalk.red(`${logSymbols.error} Skipping ${file}, this is not a PDF file`));
       continue;
     }
 
     // skip invalid formatted filenames
     if (file.split(nameDelineator)[0].length !== 8 || isNaN(+file.split(nameDelineator)[0])) {
-      log(chalk.red(`Skipping ${file}, invalid filename`));
+      log(chalk.red(`${logSymbols.error} Skipping ${file}, invalid filename`));
       continue;
     }
 
@@ -232,12 +234,15 @@ const generatePdfWithSeparator = async () => {
     );
     log(
       chalk.green(
+        logSymbols.success,
         "Success",
         chalk.white.bold(`${path.join(outDir, path.basename(file))}`),
-        "has been created.\n\n"
+        "has been created.\n"
       )
     );
   }
+  
+  log(chalk.green(logSymbols.success, "Success, all PDFs generated.\n\n"));
 };
 
 const applyFooterToGeneratedPdfs = async () => {
@@ -278,7 +283,8 @@ const applyFooterToGeneratedPdfs = async () => {
     const pageBytes = await pdf.save();
     fs.writeFileSync(path.join(outDir, path.basename(file)), pageBytes);
   }
-  log(chalk.green("Success, applied footer to all pages.\n\n"));
+  
+  log(chalk.green(logSymbols.success, "Success, applied footer to all pages.\n\n"));
 };
 
 const mergeAllGeneratedPdfs = async () => {
@@ -301,16 +307,25 @@ const mergeAllGeneratedPdfs = async () => {
   }
   const pdfWriteBytes = await pdfDoc.save();
   fs.writeFileSync(path.join(outDir, mergedName), pdfWriteBytes);
-  log(
-    chalk.green(
-      "Success, all PDFs merged and",
-      chalk.white.bold(`${path.join(outDir, mergedName)}`),
-      "has been created.\n\n"
-    )
-  );
+  
+  log(chalk.green(
+    logSymbols.success,
+    "Success, all PDFs merged and",
+    chalk.white.bold(`${path.join(outDir, mergedName)}`),
+    "has been created.\n\n"
+  ));
 };
 
-await generatePdfWithSeparator();
-if (numberPages || groupDesc) await applyFooterToGeneratedPdfs();
-if (mergeAll) await mergeAllGeneratedPdfs();
-log(chalk.greenBright.bold("DONE!"));
+const run = async () => {
+  await generatePdfWithSeparator();
+  if (numberPages || groupDesc) {
+    await applyFooterToGeneratedPdfs();
+  }
+  if (mergeAll) {
+    await mergeAllGeneratedPdfs();
+  }
+}
+
+oraPromise(run, {
+  successText: chalk.green("DONE!")
+});
