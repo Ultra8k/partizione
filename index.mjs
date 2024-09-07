@@ -20,12 +20,19 @@ const {
   dir,
   outDir,
   nameDelineator,
+  labelIndex,
   label,
   numberPages,
   mergeAll,
   mergedName,
   groupDesc,
-  groupDescLabel
+  groupDescLabel,
+  labelIsGroupDescLabel,
+  dateIndex,
+  dateFormat,
+  headerIndex,
+  dateInHeader,
+  titleIndex
 } = await parseOptions();
 
 if (!dir) {
@@ -75,8 +82,8 @@ const generatePdfWithSeparator = async () => {
   const files = fs.readdirSync(dir);
   // remove non pdfs and sort filename index 0
   const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = +a.split(nameDelineator)[0];
-    const sorterB = +b.split(nameDelineator)[0];
+    const sorterA = dateIndex == 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
+    const sorterB = dateIndex == 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
     return sorterA - sorterB;
   });
   log(chalk.cyan(`Found ${filteredFiles.length} PDF files`));
@@ -90,12 +97,6 @@ const generatePdfWithSeparator = async () => {
       continue;
     }
 
-    // skip invalid formatted filenames
-    if (file.split(nameDelineator)[0].length !== 8 || isNaN(+file.split(nameDelineator)[0])) {
-      log(chalk.red(`${logSymbols.error} Skipping ${file}, invalid filename`));
-      continue;
-    }
-
     // parse pdf file names to get pieces
     let namePieces = file.split(nameDelineator);
     // remove '.pdf' from last name piece
@@ -103,6 +104,12 @@ const generatePdfWithSeparator = async () => {
       0,
       namePieces[namePieces.length - 1].length - 4
     );
+
+    // get date from filename
+    const separatorPageDate = dateIndex !== null && dateIndex !== undefined ? namePieces[dateIndex].substring(0, dateFormat.length) : "";
+    const separatorPageHeader = headerIndex !== null && headerIndex !== undefined ? namePieces[headerIndex] : "";
+    const separatorPageTitle = titleIndex !== null && titleIndex !== undefined ? namePieces[titleIndex] : "";
+    const separatorPageLabel = labelIndex !== null && labelIndex !== undefined ? namePieces[labelIndex] : label;
 
     // create separator page
     const sepPdfDoc = await PDFDocument.create();
@@ -138,8 +145,8 @@ const generatePdfWithSeparator = async () => {
     totalPages += orgPdfPagesLength;
 
     // construct text blocks
-    const header = [namePieces[0], namePieces[1]];
-    const title = namePieces[2];
+    const header = dateInHeader ? [separatorPageDate, separatorPageHeader] : [separatorPageHeader];
+    const title = separatorPageTitle;
     const pageLength = `${orgPdfPagesLength} page${
       orgPdfPagesLength > 1 ? "s" : ""
     }`;
@@ -148,7 +155,7 @@ const generatePdfWithSeparator = async () => {
       chalk.cyan(
         "Creating page with content:\n\n",
         chalk.blueBright(
-          `${header[0]}\n${header[1]}\n${title}\n${pageLength}\n${label}`
+          `${header[0]}\n${header[1]}\n${title}\n${pageLength}\n${separatorPageLabel}`
         )
       ),
       "\n"
@@ -170,11 +177,13 @@ const generatePdfWithSeparator = async () => {
       });
 
     drawText(header[0], headerFontSize, width - bookmarkDims.height * 1.5);
-    drawText(
-      header[1],
-      headerFontSize,
-      width - bookmarkDims.height * 1.5 - textHeight(headerFontSize) * 1.5
-    );
+    if (dateInHeader) {
+      drawText(
+        header[1],
+        headerFontSize,
+        width - bookmarkDims.height * 1.5 - textHeight(headerFontSize) * 1.5
+      );
+    }
     drawText(
       title,
       fontSize,
@@ -191,7 +200,7 @@ const generatePdfWithSeparator = async () => {
         textHeight(headerFontSize) * 1.5 * 2 -
         textHeight(fontSize) * 1.5 * 3
     );
-    drawText(label, labelFontSize, width / 2);
+    drawText(separatorPageLabel, labelFontSize, width / 2);
 
     // copy original pdf pages to separator pdf
     log(chalk.cyan(`Copying ${orgPdfPages.length} original pages`));
@@ -249,8 +258,8 @@ const applyFooterToGeneratedPdfs = async () => {
   log(chalk.cyan("Applying footer to generated PDFs."));
   const files = fs.readdirSync(outDir);
   const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = +a.split(nameDelineator)[0];
-    const sorterB = +b.split(nameDelineator)[0];
+    const sorterA = dateIndex === 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
+    const sorterB = dateIndex === 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
     return sorterA - sorterB;
   });
   let currentPage = 1;
@@ -259,9 +268,24 @@ const applyFooterToGeneratedPdfs = async () => {
     const pdf = await PDFDocument.load(pdfBytes);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const pages = pdf.getPages();
+
+    let separatorPageLabel = null;
+    if (labelIsGroupDescLabel) {
+      // parse pdf file names to get pieces
+      let namePieces = file.split(nameDelineator);
+      // remove '.pdf' from last name piece
+      namePieces[namePieces.length - 1] = namePieces[namePieces.length - 1].slice(
+        0,
+        namePieces[namePieces.length - 1].length - 4
+      );
+  
+      separatorPageLabel = labelIndex !== null && labelIndex !== undefined ? namePieces[labelIndex] : label;
+    }
+    const groupLabel = labelIsGroupDescLabel && separatorPageLabel ? separatorPageLabel : groupDescLabel;
+
     pages.forEach((page) => {
-      let footer = `${groupDescLabel ?? "_"} - Page ${currentPage} of ${totalPages}`;
-      if (!groupDescLabel) footer = footer.split(" - ")[1];
+      let footer = `${groupLabel ?? "_"} - Page ${currentPage} of ${totalPages}`;
+      if (!groupLabel) footer = footer.split(" - ")[1];
       if (!numberPages) footer = footer.split(" - ")[0];
       page.drawRectangle({
         x: page.getWidth() - 36 - (font.widthOfTextAtSize(footer, 8) * 1.2),
@@ -291,8 +315,8 @@ const mergeAllGeneratedPdfs = async () => {
   log(chalk.cyan("Merging all generated PDFs."));
   const files = fs.readdirSync(outDir);
   const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = +a.split(nameDelineator)[0];
-    const sorterB = +b.split(nameDelineator)[0];
+    const sorterA = dateIndex == 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
+    const sorterB = dateIndex == 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
     return sorterA - sorterB;
   });
   const pdfDoc = await PDFDocument.create();
