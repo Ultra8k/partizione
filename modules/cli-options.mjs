@@ -15,7 +15,7 @@ export default async () => {
   const nameDelineator = await input({
     type: "input",
     name: "name-deli",
-    message: "What is the name delineator?",
+    message: "What is the filename delineator?",
     default: " - ",
   });
 
@@ -28,7 +28,7 @@ export default async () => {
       value: false,
     }],
     name: "label-in-filename",
-    message: "Is the separator page label in the filename?",
+    message: "Is the cover page label in the filename?",
     default: false,
   });
   let labelIndex, label;
@@ -36,14 +36,14 @@ export default async () => {
     labelIndex = await number({
       type: "number",
       name: "label-index",
-      message: "What index of the filename is the separator page label?",
+      message: "What index of the filename is the cover page label?",
       required: labelInFilename,
     });
   } else {
     label = await input({
       type: "input",
       name: "label",
-      message: "What is the separator page label?",
+      message: "What is the cover page label?",
       default: "SEPARATOR PAGE",
     });
   }
@@ -58,7 +58,7 @@ export default async () => {
       value: false,
     }],
     name: "header-in-filename",
-    message: "Is the header in the filename?",
+    message: "Is the cover page header in the filename?",
     default: false,
   });
   if (headerInFilename) {
@@ -87,7 +87,7 @@ export default async () => {
     dateIndex = await number({
       type: "number",
       name: "date-index",
-      message: "What index of the filename is the date located?",
+      message: "What index of the filename is the date?",
       default: 0,
     });
     dateFormat = await select({
@@ -134,7 +134,7 @@ export default async () => {
       value: false,
     }],
     name: "date-in-header",
-    message: "Should the date be in the separator page header?",
+    message: "Should the date be in the cover page header?",
     default: true,
   });
 
@@ -147,7 +147,7 @@ export default async () => {
       value: false,
     }],
     name: "title-in-filename",
-    message: "Is the title in the filename?",
+    message: "Is the cover page title in the filename?",
     default: false,
   });
   let titleIndex;
@@ -214,7 +214,7 @@ export default async () => {
       value: false,
     }],
     name: "label-is-group-desc-label",
-    message: "Is the separator page label the group description label?",
+    message: "Is the cover page label the group description label?",
     default: false,
   });
   let groupDescLabel = null;
@@ -236,6 +236,7 @@ export default async () => {
     mergeAll,
     mergedName,
     groupDesc,
+    labelIsGroupDescLabel,
     groupDescLabel,
     dateIndex,
     dateFormat,

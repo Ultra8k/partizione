@@ -44,8 +44,8 @@ export default async () => {
     dir = args.dir ?? "";
     outDir = args["out-dir"] ?? "output";
     nameDelineator = args["name-deli"] ?? " - ";
-    label = !labelIndex && args.label || "SEPARATOR PAGE";
     labelIndex = args["label-index"] ?? null;
+    label = !labelIndex && args.label || "SEPARATOR PAGE";
     numberPages = args["number-pages"] === "true" ? true : false;
     mergeAll = args["merge-all"] === "true" ? true : false;
     mergedName = args["merged-name"] ?? "merged.pdf";
