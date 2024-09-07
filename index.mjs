@@ -80,14 +80,14 @@ let totalPages = 0;
 const generatePdfWithSeparator = async () => {
   log(chalk.cyan(`Reading source directory ${dir}`));
   const files = fs.readdirSync(dir);
-  // remove non pdfs and sort filename index 0
-  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = dateIndex == 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
-    const sorterB = dateIndex == 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
+  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf');
+  const sortedFiles = dateIndex === 0 ? filteredFiles.sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
     return sorterA - sorterB;
-  });
-  log(chalk.cyan(`Found ${filteredFiles.length} PDF files`));
-  for (const file of filteredFiles) {
+  }) : filteredFiles.sort();
+  log(chalk.cyan(`Found ${sortedFiles.length} PDF files`));
+  for (const file of sortedFiles) {
     log(chalk.cyan("Processing", chalk.white(`${file}`)));
     // get file path
     const filePath = path.join(dir, file);
@@ -257,13 +257,14 @@ const generatePdfWithSeparator = async () => {
 const applyFooterToGeneratedPdfs = async () => {
   log(chalk.cyan("Applying footer to generated PDFs."));
   const files = fs.readdirSync(outDir);
-  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = dateIndex === 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
-    const sorterB = dateIndex === 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
+  const filteredFiles = files.filter(file => fs.statSync(path.join(outDir, file)).isFile() && path.extname(file) === '.pdf');
+  const sortedFiles = dateIndex === 0 ? filteredFiles.sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
     return sorterA - sorterB;
-  });
+  }) : filteredFiles.sort();
   let currentPage = 1;
-  for (const file of filteredFiles) {
+  for (const file of sortedFiles) {
     const pdfBytes = fs.readFileSync(path.join(outDir, file));
     const pdf = await PDFDocument.load(pdfBytes);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -314,13 +315,14 @@ const applyFooterToGeneratedPdfs = async () => {
 const mergeAllGeneratedPdfs = async () => {
   log(chalk.cyan("Merging all generated PDFs."));
   const files = fs.readdirSync(outDir);
-  const filteredFiles = files.filter(file => fs.statSync(path.join(dir, file)).isFile() && path.extname(file) === '.pdf').sort((a, b) => {
-    const sorterA = dateIndex == 0 ? +a.split(nameDelineator)[0] : a.split(nameDelineator)[0];
-    const sorterB = dateIndex == 0 ? +b.split(nameDelineator)[0] : b.split(nameDelineator)[0];
+  const filteredFiles = files.filter(file => fs.statSync(path.join(outDir, file)).isFile() && path.extname(file) === '.pdf');
+  const sortedFiles = dateIndex === 0 ? filteredFiles.sort((a, b) => {
+    const sorterA = +a.split(nameDelineator)[0];
+    const sorterB = +b.split(nameDelineator)[0];
     return sorterA - sorterB;
-  });
+  }) : filteredFiles.sort();
   const pdfDoc = await PDFDocument.create();
-  for (const file of filteredFiles) {
+  for (const file of sortedFiles) {
     const pdfReadBytes = fs.readFileSync(path.join(outDir, file));
     const pdfRead = await PDFDocument.load(pdfReadBytes);
     const pdfReadIndices = pdfRead.getPageIndices();

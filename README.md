@@ -23,7 +23,7 @@ node ./index.mjs --dir [--out-dir] [--name-deli] [--label] [--number-pages] [--m
 | --name-deli            | name delineator                             | optional | ' - '          |
 | --label-index          | filename index of cover page label          | optional | null           |
 | --label                | cover page label                            | optional | SEPARATOR PAGE |
-| --date-index           | filename index of the date                  | optional | 0              |
+| --date-index           | filename index of the date                  | optional | null           |
 | --header-index         | filename index of the cover page header     | optional | 1              |
 | --date-format          | the format of the date in the filename      | optional | 'YYYYMMDD'     |
 | --date-in-header       | put the date in the cover page header       | optional | false          |

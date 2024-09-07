@@ -31,7 +31,7 @@ export default async () => {
     message: "Is the cover page label in the filename?",
     default: false,
   });
-  let labelIndex, label;
+  let labelIndex, label = null;
   if (labelInFilename) {
     labelIndex = await number({
       type: "number",
@@ -48,7 +48,7 @@ export default async () => {
     });
   }
 
-  let headerIndex;
+  let headerIndex = null;
   const headerInFilename = await select({
     choices: [{
       name: "Yes",
@@ -82,7 +82,7 @@ export default async () => {
     message: "Is the date in the filename?",
     default: false,
   });
-  let dateIndex, dateFormat;
+  let dateIndex, dateFormat = null;
   if (dateInFilename) {
     dateIndex = await number({
       type: "number",

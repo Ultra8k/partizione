@@ -52,7 +52,7 @@ export default async () => {
     groupDescLabel = args["group-label"] ?? null;
     labelIsGroupDescLabel = args["label-is-group-label"] === "true" ? true : false;
     groupDesc = labelIsGroupDescLabel || (groupDescLabel ?? false);
-    dateIndex = args["date-index"] ?? 0;
+    dateIndex = args["date-index"] ?? null;
     dateFormat = args["date-format"] ?? "YYYYMMDD";
     headerIndex = args["header-index"] ?? 1;
     dateInHeader = args["date-in-header"] === "true" ? true : false;
